@@ -15,6 +15,7 @@ from enum import IntEnum
 from pathlib import Path
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Callable, ContextManager, Iterable, Iterator, Literal, Sequence, TypeVar, cast
+from transformers import AutoTokenizer  # Add this import
 from itertools import chain
 
 import math
@@ -993,6 +994,72 @@ class Model:
         if (field := vocab_reader.get_field(gguf.Keys.Tokenizer.ADD_EOS)) is not None:
             self.gguf_writer.add_add_eos_token(field.parts[-1].tolist()[0])
 
+@Model.register("KateAIForCausalLM")
+class KateAI(Model):
+    model_arch = gguf.MODEL_ARCH.KATEAI
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Load configuration from the model's config.json
+        if not hasattr(self, 'config'):
+            config_path = os.path.join(self.dir_model, 'config.json')
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    self.config = json.load(f)
+        # Load the tokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(self.dir_model)  # Add this line
+
+    def set_gguf_parameters(self):
+        """Set GGUF metadata parameters."""
+        self.gguf_writer.add_context_length(self.config["max_seq_length"])
+        self.gguf_writer.add_embedding_length(self.config["hidden_size"])
+        self.gguf_writer.add_block_count(self.config["num_layers"])
+        self.gguf_writer.add_head_count(self.config["num_heads"])
+        # Use rms_norm_eps if available, otherwise fallback
+        norm_eps = self.config.get("rms_norm_eps", self.config.get("layer_norm_eps", 1e-6))
+        self.gguf_writer.add_layer_norm_rms_eps(norm_eps)
+
+    def set_vocab(self):
+        """Set the tokenizer vocabulary."""
+        self.gguf_writer.add_tokenizer_model("gpt2")  # Update if different
+        vocab = self.tokenizer.get_vocab()
+        self.gguf_writer.add_token_list(list(vocab.keys()))
+        
+        # Use the tokenizer's attributes directly
+        self.gguf_writer.add_bos_token_id(
+            self.tokenizer.bos_token_id or vocab.get("<s>", 1)
+        )
+        self.gguf_writer.add_eos_token_id(
+            self.tokenizer.eos_token_id or vocab.get("</s>", 2)
+        )
+        self.gguf_writer.add_pad_token_id(
+            self.tokenizer.pad_token_id or vocab.get("<pad>", 0)
+        )
+
+    def write_tensors(self):
+        """Write tensors to GGUF format."""
+        tensor_mapping = self.get_tensor_mapping()
+        for name, data in self.state_dict().items():
+            if name in tensor_mapping:
+                gguf_name = tensor_mapping[name]
+                self.gguf_writer.add_tensor(gguf_name, data.numpy())
+
+    @staticmethod
+    def get_tensor_mapping():
+        """Map PyTorch tensor names to GGUF tensor names."""
+        return {
+            "token_embeddings": gguf.MODEL_TENSOR.TOKEN_EMBD,
+            "positional_encoding.pe": gguf.MODEL_TENSOR.POS_EMBD,
+            "output_layer": gguf.MODEL_TENSOR.OUTPUT,
+            "layers.{bid}.attention.query": gguf.MODEL_TENSOR.ATTN_Q,
+            "layers.{bid}.attention.key": gguf.MODEL_TENSOR.ATTN_K,
+            "layers.{bid}.attention.value": gguf.MODEL_TENSOR.ATTN_V,
+            "layers.{bid}.attention.output": gguf.MODEL_TENSOR.ATTN_OUT,
+            "layers.{bid}.norm1": gguf.MODEL_TENSOR.ATTN_NORM,
+            "layers.{bid}.feed_forward.linear1": gguf.MODEL_TENSOR.FFN_DOWN,
+            "layers.{bid}.feed_forward.linear2": gguf.MODEL_TENSOR.FFN_UP,
+            "layers.{bid}.norm2": gguf.MODEL_TENSOR.FFN_NORM,
+        }
 
 @Model.register("GPTNeoXForCausalLM")
 class GPTNeoXModel(Model):
@@ -1752,7 +1819,7 @@ class Mistral3Model(LlamaModel):
 
     # we need to merge the text_config into the root level of hparams
     def __init__(self, *args, **kwargs):
-        hparams = kwargs["hparams"] if "hparams" in kwargs else Model.load_hparams(args[0])
+        hparams = Model.load_hparams(kwargs["dir_model"])
         if "text_config" in hparams:
             hparams = {**hparams, **hparams["text_config"]}
             kwargs["hparams"] = hparams
@@ -3385,7 +3452,7 @@ class Gemma3Model(Model):
 
     # we need to merge the text_config into the root level of hparams
     def __init__(self, *args, **kwargs):
-        hparams = kwargs["hparams"] if "hparams" in kwargs else Model.load_hparams(args[0])
+        hparams = Model.load_hparams(kwargs["dir_model"])
         if "text_config" in hparams:
             hparams = {**hparams, **hparams["text_config"]}
             kwargs["hparams"] = hparams
@@ -3803,6 +3870,8 @@ class MambaModel(Model):
     _tok_embd = None
 
     def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+        del bid  # unused
+
         output_name = self.format_tensor_name(gguf.MODEL_TENSOR.OUTPUT)
         tok_embd_name = self.format_tensor_name(gguf.MODEL_TENSOR.TOKEN_EMBD)
 
@@ -3811,10 +3880,6 @@ class MambaModel(Model):
         if name.endswith(".A_log"):
             logger.debug("A_log --> A ==> " + new_name)
             data_torch = -torch.exp(data_torch)
-
-        # [4 1 8192 1] -> [4 8192 1 1]
-        if self.match_model_tensor_name(new_name, gguf.MODEL_TENSOR.SSM_CONV1D, bid):
-            data_torch = data_torch.squeeze()
 
         # assuming token_embd.weight is seen before output.weight
         if self._tok_embd is not None and new_name == output_name:
@@ -5360,7 +5425,7 @@ def main() -> None:
             logger.error(f"Model {model_architecture} is not supported")
             sys.exit(1)
 
-        model_instance = model_class(dir_model, output_type, fname_out,
+        model_instance = model_class(dir_model=dir_model, ftype=output_type, fname_out=fname_out,
                                      is_big_endian=args.bigendian, use_temp_file=args.use_temp_file,
                                      eager=args.no_lazy,
                                      metadata_override=args.metadata, model_name=args.model_name,
