@@ -286,6 +286,7 @@ class MODEL_ARCH(IntEnum):
     GRANITE_MOE      = auto()
     CHAMELEON        = auto()
     WAVTOKENIZER_DEC = auto()
+    KATEAI           = auto()
 
 
 class MODEL_TENSOR(IntEnum):
@@ -488,6 +489,7 @@ MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
     MODEL_ARCH.GRANITE_MOE:      "granitemoe",
     MODEL_ARCH.CHAMELEON:        "chameleon",
     MODEL_ARCH.WAVTOKENIZER_DEC: "wavtokenizer-dec",
+    MODEL_ARCH.KATEAI:           "kateai"
 }
 
 TENSOR_NAMES: dict[MODEL_TENSOR, str] = {
@@ -1650,6 +1652,19 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
         MODEL_TENSOR.POSNET_ATTN_K,
         MODEL_TENSOR.POSNET_ATTN_V,
         MODEL_TENSOR.POSNET_ATTN_OUT,
+    ],
+    MODEL_ARCH.KATEAI: [
+        MODEL_TENSOR.TOKEN_EMBD,
+        MODEL_TENSOR.POS_EMBD,
+        MODEL_TENSOR.OUTPUT,
+        MODEL_TENSOR.ATTN_Q,
+        MODEL_TENSOR.ATTN_K,
+        MODEL_TENSOR.ATTN_V,
+        MODEL_TENSOR.ATTN_OUT,
+        MODEL_TENSOR.ATTN_NORM,
+        MODEL_TENSOR.FFN_DOWN,
+        MODEL_TENSOR.FFN_UP,
+        MODEL_TENSOR.FFN_NORM,
     ],
     # TODO
 }

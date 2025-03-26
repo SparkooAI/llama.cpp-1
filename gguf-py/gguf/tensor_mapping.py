@@ -29,6 +29,7 @@ class TensorNameMap:
             "shared",                                    # t5
             "rwkv.embeddings",                           # rwkv6
             "model.embeddings",                          # rwkv7
+            "token_embeddings.weight"
         ),
 
         # Token type embeddings
@@ -54,6 +55,7 @@ class TensorNameMap:
             "transformer.wpe",                 # gpt2
             "embeddings.position_embeddings",  # bert
             "wpe",                             # gpt2
+            "positional_encoding.pe"
         ),
 
         # Output
@@ -129,8 +131,8 @@ class TensorNameMap:
             "transformer.layers.{bid}.attn_norm",                   # openelm
             "rwkv.blocks.{bid}.ln1",                                # rwkv6
             "model.layers.{bid}.ln1",                               # rwkv7
+            "layers.{bid}.norm1",
         ),
-
         # Attention norm 2
         MODEL_TENSOR.ATTN_NORM_2: (
             "transformer.h.{bid}.ln_attn",                  # falcon40b
@@ -168,8 +170,8 @@ class TensorNameMap:
             "model.layers.{bid}.attention.wq",                           # internlm2
             "transformer.decoder_layer.{bid}.multi_head_attention.query",# Grok
             "transformer.h.{bid}.attn.attention.q_proj",                 # exaone
+            "layers.{bid}.attention.query",
         ),
-
         # Attention key
         MODEL_TENSOR.ATTN_K: (
             "model.layers.{bid}.self_attn.k_proj",                     # llama-hf nemotron olmoe olmo2 phimoe
@@ -182,6 +184,7 @@ class TensorNameMap:
             "model.layers.{bid}.attention.wk",                         # internlm2
             "transformer.decoder_layer.{bid}.multi_head_attention.key",# Grok
             "transformer.h.{bid}.attn.attention.k_proj",               # exaone
+            "layers.{bid}.attention.key",
         ),
 
         # Attention value
@@ -195,6 +198,7 @@ class TensorNameMap:
             "model.layers.{bid}.attention.wv",                           # internlm2
             "transformer.decoder_layer.{bid}.multi_head_attention.value",# Grok
             "transformer.h.{bid}.attn.attention.v_proj",                 # exaone
+            "layers.{bid}.attention.value",
         ),
 
         # Attention output
@@ -221,6 +225,7 @@ class TensorNameMap:
             "encoder.layers.{bid}.self_attention.dense",                    # chatglm
             "transformer.layers.{bid}.attn.out_proj",                       # openelm
             "transformer.h.{bid}.attn.attention.out_proj",                  # exaone
+            "layers.{bid}.attention.output",
         ),
 
         # Attention output norm
@@ -258,6 +263,7 @@ class TensorNameMap:
             "transformer.decoder_layer.{bid}.rms_norm_2",                    # Grok
             "encoder.layers.{bid}.post_attention_layernorm",                 # chatglm
             "transformer.layers.{bid}.ffn_norm",                             # openelm
+            "layers.{bid}.norm2",
         ),
 
         # Post feed-forward norm
@@ -314,6 +320,7 @@ class TensorNameMap:
             "model.layers.{bid}.residual_mlp.w3",                     # arctic
             "encoder.layers.{bid}.mlp.dense_h_to_4h",                 # chatglm
             "transformer.h.{bid}.mlp.c_fc_1",                         # exaone
+            "layers.{bid}.feed_forward.linear2",
         ),
 
         MODEL_TENSOR.FFN_UP_EXP: (
@@ -388,6 +395,7 @@ class TensorNameMap:
             "encoder.layer.{bid}.mlp.down_layer",                     # jina-bert-v2
             "encoder.layers.{bid}.mlp.dense_4h_to_h",                 # chatglm
             "model.layers.h.{bid}.mlp.c_proj",                        # exaone
+            "layers.{bid}.feed_forward.linear1",
         ),
 
         MODEL_TENSOR.FFN_DOWN_EXP: (
