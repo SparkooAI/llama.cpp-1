@@ -1330,6 +1330,18 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                 ml.get_key(LLM_KV_ATTENTION_GROUPNORM_GROUPS, hparams.n_norm_groups);
                 ml.get_key(LLM_KV_ATTENTION_CAUSAL,           hparams.causal_attn);
             } break;
+        case LLM_ARCH_KATEAI:
+            {
+                // Load standard parameters
+                ml.get_key(LLM_KV_CONTEXT_LENGTH,    hparams.n_ctx_train);
+                ml.get_key(LLM_KV_EMBEDDING_LENGTH,  hparams.n_embd);
+                ml.get_key(LLM_KV_BLOCK_COUNT,       hparams.n_layer);
+                ml.get_key(LLM_KV_ATTENTION_HEAD_COUNT, hparams.n_head);
+                // Load LayerNorm epsilon (standard for your model)
+                ml.get_key(LLM_KV_ATTENTION_LAYERNORM_EPS, hparams.f_norm_eps);
+                // Set feed-forward size (4x hidden size)
+                hparams.n_ff = hparams.n_embd * 4;
+            } break;
         default: throw std::runtime_error("unsupported model architecture");
     }
 
@@ -3712,6 +3724,42 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
                     output   = create_tensor(tn(LLM_TENSOR_OUTPUT, "weight"), {hparams.convnext.n_embd, n_embd}, 0);
                     output_b = create_tensor(tn(LLM_TENSOR_OUTPUT, "bias"),   {n_embd}, 0);
                 } break;
+            case LLM_ARCH_KATEAI: {
+                tok_embd = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, 0);
+                positional_encoding = create_tensor(tn(LLM_TENSOR_POS_EMBD, "pe"), {max_seq_len, n_embd}, 0);
+
+                for (int i = 0; i < n_layer; ++i) {
+                    auto & layer = layers[i];
+
+                    // Attention weights
+                    layer.wq = create_tensor(tn(LLM_TENSOR_ATTN_Q, "weight", i), {n_embd, n_embd}, 0);
+                    layer.wk = create_tensor(tn(LLM_TENSOR_ATTN_K, "weight", i), {n_embd, n_embd}, 0);
+                    layer.wv = create_tensor(tn(LLM_TENSOR_ATTN_V, "weight", i), {n_embd, n_embd}, 0);
+                    layer.wo = create_tensor(tn(LLM_TENSOR_ATTN_OUT, "weight", i), {n_embd, n_embd}, 0);
+
+                    // Attention biases
+                    layer.bq = create_tensor(tn(LLM_TENSOR_ATTN_Q, "bias", i), {n_embd}, TENSOR_NOT_REQUIRED);
+                    layer.bk = create_tensor(tn(LLM_TENSOR_ATTN_K, "bias", i), {n_embd}, TENSOR_NOT_REQUIRED);
+                    layer.bv = create_tensor(tn(LLM_TENSOR_ATTN_V, "bias", i), {n_embd}, TENSOR_NOT_REQUIRED);
+                    layer.bo = create_tensor(tn(LLM_TENSOR_ATTN_OUT, "bias", i), {n_embd}, TENSOR_NOT_REQUIRED);
+
+                    // Layer norms
+                    layer.norm1 = create_tensor(tn(LLM_TENSOR_ATTN_NORM, "weight", i), {n_embd}, 0);
+                    layer.norm1_b = create_tensor(tn(LLM_TENSOR_ATTN_NORM, "bias", i), {n_embd}, TENSOR_NOT_REQUIRED);
+                    layer.norm2 = create_tensor(tn(LLM_TENSOR_FFN_NORM, "weight", i), {n_embd}, 0);
+                    layer.norm2_b = create_tensor(tn(LLM_TENSOR_FFN_NORM, "bias", i), {n_embd}, TENSOR_NOT_REQUIRED);
+
+                    // Feed-forward network
+                    layer.ffn1 = create_tensor(tn(LLM_TENSOR_FFN_GATE, "weight", i), {n_embd, n_ff}, 0);
+                    layer.ffn2 = create_tensor(tn(LLM_TENSOR_FFN_DOWN, "weight", i), {n_ff, n_embd}, 0);
+                    layer.ffn1_b = create_tensor(tn(LLM_TENSOR_FFN_GATE, "bias", i), {n_ff}, TENSOR_NOT_REQUIRED);
+                    layer.ffn2_b = create_tensor(tn(LLM_TENSOR_FFN_DOWN, "bias", i), {n_embd}, TENSOR_NOT_REQUIRED);
+                }
+
+                // Output layer
+                output_norm = create_tensor(tn(LLM_TENSOR_OUTPUT_NORM, "weight"), {n_embd}, 0);
+                output = create_tensor(tn(LLM_TENSOR_OUTPUT, "weight"), {n_embd, n_vocab}, 0);
+            } break;
             default:
                 throw std::runtime_error("unknown architecture");
         }
@@ -11615,6 +11663,84 @@ struct llm_build_wavtokenizer_dec : public llm_graph_context {
     }
 };
 
+struct llm_build_kateai : public llm_graph_context {
+    llm_build_kateai(const llama_model & model, const llm_graph_params & params, ggml_cgraph * gf) 
+        : llm_graph_context(params) {
+
+        const auto & hparams = model.hparams;
+        const int n_embd = hparams.n_embd;
+        const int n_head = hparams.n_head;
+        const int n_layer = hparams.n_layer;
+
+        // Token embeddings
+        ggml_tensor * token_embeddings = ggml_lookup_tensor(ctx0, "token_embeddings.weight");
+        ggml_tensor * positional_encoding = ggml_lookup_tensor(ctx0, "positional_encoding.pe");
+        
+        ggml_tensor * x = ggml_add(ctx0, token_embeddings, positional_encoding);
+        cb(x, "input_embd", -1);
+
+        for (int il = 0; il < n_layer; ++il) {
+            char layer_name[32];
+            snprintf(layer_name, sizeof(layer_name), "layers.%d", il);
+
+            // Self-attention
+            {
+                ggml_tensor * norm = ggml_norm(ctx0, x);
+                norm = ggml_mul(ctx0, norm, ggml_lookup_tensor(ctx0, format("%s.norm1.weight", layer_name)));
+                norm = ggml_add(ctx0, norm, ggml_lookup_tensor(ctx0, format("%s.norm1.bias", layer_name)));
+                cb(norm, "attn_norm", il);
+
+                ggml_tensor * q = ggml_mul_mat(ctx0, norm, ggml_lookup_tensor(ctx0, format("%s.attention.query.weight", layer_name)));
+                q = ggml_add(ctx0, q, ggml_lookup_tensor(ctx0, format("%s.attention.query.bias", layer_name)));
+
+                ggml_tensor * k = ggml_mul_mat(ctx0, norm, ggml_lookup_tensor(ctx0, format("%s.attention.key.weight", layer_name)));
+                k = ggml_add(ctx0, k, ggml_lookup_tensor(ctx0, format("%s.attention.key.bias", layer_name)));
+
+                ggml_tensor * v = ggml_mul_mat(ctx0, norm, ggml_lookup_tensor(ctx0, format("%s.attention.value.weight", layer_name)));
+                v = ggml_add(ctx0, v, ggml_lookup_tensor(ctx0, format("%s.attention.value.bias", layer_name)));
+
+                ggml_tensor * scores = ggml_soft_max(ctx0, ggml_scale(ctx0, ggml_mul_mat(ctx0, q, k), sqrt(n_embd / n_head)));
+                ggml_tensor * attn_out = ggml_mul_mat(ctx0, scores, v);
+                attn_out = ggml_add(ctx0, attn_out, ggml_lookup_tensor(ctx0, format("%s.attention.output.bias", layer_name)));
+                attn_out = ggml_mul_mat(ctx0, attn_out, ggml_lookup_tensor(ctx0, format("%s.attention.output.weight", layer_name)));
+
+                x = ggml_add(ctx0, x, attn_out);
+                cb(x, "attn_out", il);
+            }
+
+            // Feed-forward
+            {
+                ggml_tensor * norm = ggml_norm(ctx0, x);
+                norm = ggml_mul(ctx0, norm, ggml_lookup_tensor(ctx0, format("%s.norm2.weight", layer_name)));
+                norm = ggml_add(ctx0, norm, ggml_lookup_tensor(ctx0, format("%s.norm2.bias", layer_name)));
+                cb(norm, "ffn_norm", il);
+
+                ggml_tensor * ff1 = ggml_mul_mat(ctx0, norm, ggml_lookup_tensor(ctx0, format("%s.feed_forward.linear1.weight", layer_name)));
+                ff1 = ggml_add(ctx0, ff1, ggml_lookup_tensor(ctx0, format("%s.feed_forward.linear1.bias", layer_name)));
+                ff1 = ggml_gelu(ctx0, ff1);
+
+                ggml_tensor * ff2 = ggml_mul_mat(ctx0, ff1, ggml_lookup_tensor(ctx0, format("%s.feed_forward.linear2.weight", layer_name)));
+                ff2 = ggml_add(ctx0, ff2, ggml_lookup_tensor(ctx0, format("%s.feed_forward.linear2.bias", layer_name)));
+
+                x = ggml_add(ctx0, x, ff2);
+                cb(x, "ffn_out", il);
+            }
+        }
+
+        // Output layer
+        ggml_tensor * norm = ggml_norm(ctx0, x);
+        norm = ggml_mul(ctx0, norm, ggml_lookup_tensor(ctx0, "output_layer.weight"));
+        norm = ggml_add(ctx0, norm, ggml_lookup_tensor(ctx0, "output_layer.bias"));
+        cb(norm, "final_norm", -1);
+
+        ggml_tensor * logits = ggml_mul_mat(ctx0, norm, ggml_lookup_tensor(ctx0, "output_layer.weight"));
+        logits = ggml_add(ctx0, logits, ggml_lookup_tensor(ctx0, "output_layer.bias"));
+        cb(logits, "logits", -1);
+
+        ggml_build_forward_expand(gf, logits);
+    }
+};
+
 llama_memory_i * llama_model::create_memory() const {
     llama_memory_i * res;
 
@@ -11886,6 +12012,10 @@ llm_graph_result_ptr llama_model::build_graph(
             {
                 llm = std::make_unique<llm_build_wavtokenizer_dec>(*this, params, gf);
             } break;
+        case LLM_ARCH_KATEAI:
+            {
+                llm = std::make_unique<llm_build_kateai>(*this, params, gf);
+            } break;
         default:
             GGML_ABORT("fatal error");
     }
@@ -11994,6 +12124,7 @@ llama_rope_type llama_model_rope_type(const llama_model * model) {
         case LLM_ARCH_RWKV7:
         case LLM_ARCH_ARWKV7:
         case LLM_ARCH_WAVTOKENIZER_DEC:
+        case LLM_ARCH_KATEAI:
             return LLAMA_ROPE_TYPE_NONE;
 
         // use what we call a normal RoPE, operating on pairs of consecutive head values
