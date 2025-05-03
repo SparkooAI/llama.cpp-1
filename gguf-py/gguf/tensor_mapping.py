@@ -9,6 +9,7 @@ class TensorNameMap:
     mappings_cfg: dict[MODEL_TENSOR, tuple[str, ...]] = {
         # Token embeddings
         MODEL_TENSOR.TOKEN_EMBD: (
+            "token_embeddings",                          # kateai
             "gpt_neox.embed_in",                         # gptneox
             "transformer.wte",                           # gpt2 gpt-j mpt refact qwen dbrx jais exaone
             "transformer.word_embeddings",               # falcon
@@ -56,10 +57,12 @@ class TensorNameMap:
             "transformer.wpe",                 # gpt2
             "embeddings.position_embeddings",  # bert
             "wpe",                             # gpt2
+            "positional_encoding.pe",          # kateai
         ),
 
         # Output
         MODEL_TENSOR.OUTPUT: (
+            "output_layer",                # kateai
             "embed_out",                 # gptneox
             "lm_head",                   # gpt2 mpt falcon llama-hf baichuan qwen mamba dbrx jais nemotron exaone olmoe olmo2 phimoe
             "output",                    # llama-pth bloom internlm2
@@ -69,6 +72,7 @@ class TensorNameMap:
             "head",                      # rwkv
             "head.out",                  # wavtokenizer
             "language_model.lm_head",    # llama4
+            "output_layer",              # kateai
         ),
 
         # Output norm
@@ -92,6 +96,7 @@ class TensorNameMap:
             "model.ln_out",                            # rwkv7
             "backbone.final_layer_norm",               # wavtokenizer
             "language_model.model.norm",               # llama4
+            "transformer.ln_f",                        # kateai
         ),
 
         # Rope frequencies
@@ -134,6 +139,7 @@ class TensorNameMap:
             "rwkv.blocks.{bid}.ln1",                                # rwkv6
             "model.layers.{bid}.ln1",                               # rwkv7
             "language_model.model.layers.{bid}.input_layernorm",    # llama4
+            "layers.{bid}.norm1",                                   # kateai
         ),
 
         # Attention norm 2
@@ -174,6 +180,7 @@ class TensorNameMap:
             "transformer.decoder_layer.{bid}.multi_head_attention.query",# Grok
             "transformer.h.{bid}.attn.attention.q_proj",                 # exaone
             "language_model.model.layers.{bid}.self_attn.q_proj",        # llama4
+            "layers.{bid}.attention.query",                              # kateai
         ),
 
         # Attention key
@@ -189,6 +196,8 @@ class TensorNameMap:
             "transformer.decoder_layer.{bid}.multi_head_attention.key",# Grok
             "transformer.h.{bid}.attn.attention.k_proj",               # exaone
             "language_model.model.layers.{bid}.self_attn.k_proj",      # llama4
+            "layers.{bid}.attention.key",                              # kateai
+            "layers.{bid}.attention.key.bias",                         # additional pattern for attention key bias
         ),
 
         # Attention value
@@ -203,6 +212,7 @@ class TensorNameMap:
             "transformer.decoder_layer.{bid}.multi_head_attention.value",# Grok
             "transformer.h.{bid}.attn.attention.v_proj",                 # exaone
             "language_model.model.layers.{bid}.self_attn.v_proj",        # llama4
+            "layers.{bid}.attention.value",                              # kateai
         ),
 
         # Attention output
@@ -230,6 +240,7 @@ class TensorNameMap:
             "transformer.layers.{bid}.attn.out_proj",                       # openelm
             "transformer.h.{bid}.attn.attention.out_proj",                  # exaone
             "language_model.model.layers.{bid}.self_attn.o_proj",           # llama4
+            "layers.{bid}.attention.output",                                # kateai
         ),
 
         # Attention output norm
@@ -269,6 +280,7 @@ class TensorNameMap:
             "encoder.layers.{bid}.post_attention_layernorm",                 # chatglm
             "transformer.layers.{bid}.ffn_norm",                             # openelm
             "language_model.model.layers.{bid}.post_attention_layernorm",    # llama4
+            "layers.{bid}.norm2",                                            # kateai
         ),
 
         # Post feed-forward norm
@@ -330,6 +342,7 @@ class TensorNameMap:
             "encoder.layers.{bid}.mlp.dense_h_to_4h",                 # chatglm
             "transformer.h.{bid}.mlp.c_fc_1",                         # exaone
             "language_model.model.layers.{bid}.feed_forward.up_proj", # llama4
+            "layers.{bid}.feed_forward.linear2",                      # kateai
         ),
 
         MODEL_TENSOR.FFN_UP_EXP: (
@@ -367,6 +380,7 @@ class TensorNameMap:
             "model.layers.{bid}.residual_mlp.w1",         # arctic
             "transformer.h.{bid}.mlp.c_fc_0",             # exaone
             "language_model.model.layers.{bid}.feed_forward.gate_proj", # llama4
+            "blk.{bid}.ffn_gate",                                    # kateai
         ),
 
         MODEL_TENSOR.FFN_GATE_EXP: (
@@ -411,6 +425,7 @@ class TensorNameMap:
             "encoder.layers.{bid}.mlp.dense_4h_to_h",                 # chatglm
             "model.layers.h.{bid}.mlp.c_proj",                        # exaone
             "language_model.model.layers.{bid}.feed_forward.down_proj", # llama4
+            "layers.{bid}.feed_forward.linear1",                      # kateai
         ),
 
         MODEL_TENSOR.FFN_DOWN_EXP: (
@@ -683,6 +698,7 @@ class TensorNameMap:
 
         MODEL_TENSOR.ATTN_K_B: (
             "model.layers.{bid}.self_attn.k_b_proj",  # deepseek2
+            "layers.{bid}.attention.key.bias",            # kateai
         ),
 
         MODEL_TENSOR.ATTN_V_B: (
@@ -1083,6 +1099,8 @@ class TensorNameMap:
     arch_block_mappings_cfg: dict[MODEL_ARCH, dict[MODEL_TENSOR, tuple[str, ...]]] = {
         MODEL_ARCH.ARCTIC: {
             MODEL_TENSOR.FFN_NORM: (
+            "layers.{bid}.norm2.weight",  # custom transformer
+            "layers.{bid}.norm2.bias",    # custom transformer
                 "model.layers.{bid}.residual_layernorm",
             ),
             MODEL_TENSOR.FFN_NORM_EXP: (
