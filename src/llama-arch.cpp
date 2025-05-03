@@ -1552,6 +1552,22 @@ static const std::map<llm_arch, std::map<llm_tensor, const char *>> LLM_TENSOR_N
         },
     },
     {
+        LLM_ARCH_KATEAI,
+        {
+            { LLM_TENSOR_TOKEN_EMBD,         "token_embeddings" },
+            { LLM_TENSOR_POS_EMBD,           "positional_encoding.pe" },
+            { LLM_TENSOR_OUTPUT,             "output_layer" },
+            { LLM_TENSOR_ATTN_NORM,          "layers.%d.norm1" },
+            { LLM_TENSOR_ATTN_Q,             "layers.%d.attention.query" },
+            { LLM_TENSOR_ATTN_K,             "layers.%d.attention.key" },
+            { LLM_TENSOR_ATTN_V,             "layers.%d.attention.value" },
+            { LLM_TENSOR_ATTN_OUT,           "layers.%d.attention.output" },
+            { LLM_TENSOR_FFN_NORM,           "layers.%d.norm2" },
+            { LLM_TENSOR_FFN_DOWN,           "layers.%d.feed_forward.linear1" },
+            { LLM_TENSOR_FFN_UP,             "layers.%d.feed_forward.linear2" },
+        }
+    }
+    {
         LLM_ARCH_UNKNOWN,
         {
             { LLM_TENSOR_TOKEN_EMBD,      "token_embd" },
