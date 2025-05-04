@@ -1007,8 +1007,6 @@ class KateAI(Model):
             if os.path.exists(config_path):
                 with open(config_path, 'r', encoding='utf-8') as f:
                     self.config = json.load(f)
-        # Load the tokenizer
-        self._set_vocab_gpt2()
 
     def set_gguf_parameters(self):
         """Set GGUF metadata parameters."""
@@ -1022,20 +1020,7 @@ class KateAI(Model):
 
     def set_vocab(self):
         """Set the tokenizer vocabulary."""
-        self.gguf_writer.add_tokenizer_model("gpt2")  # Update if different
-        vocab = self.tokenizer.get_vocab()
-        self.gguf_writer.add_token_list(list(vocab.keys()))
-        
-        # Use the tokenizer's attributes directly
-        self.gguf_writer.add_bos_token_id(
-            self.tokenizer.bos_token_id or vocab.get("<s>", 1)
-        )
-        self.gguf_writer.add_eos_token_id(
-            self.tokenizer.eos_token_id or vocab.get("</s>", 2)
-        )
-        self.gguf_writer.add_pad_token_id(
-            self.tokenizer.pad_token_id or vocab.get("<pad>", 0)
-        )
+        self._set_vocab_gpt2()
 
     def write_tensors(self):
         """Write tensors to GGUF format."""
