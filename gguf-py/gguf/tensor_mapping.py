@@ -698,7 +698,6 @@ class TensorNameMap:
 
         MODEL_TENSOR.ATTN_K_B: (
             "model.layers.{bid}.self_attn.k_b_proj",  # deepseek2
-            "layers.{bid}.attention.key.bias",            # kateai
         ),
 
         MODEL_TENSOR.ATTN_V_B: (
