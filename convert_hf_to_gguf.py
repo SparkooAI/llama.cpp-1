@@ -1008,7 +1008,6 @@ class KateAI(Model):
                 with open(config_path, 'r', encoding='utf-8') as f:
                     self.config = json.load(f)
         # Load the tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(self.dir_model)  # Add this line
         self._set_vocab_gpt2()
 
     def set_gguf_parameters(self):
