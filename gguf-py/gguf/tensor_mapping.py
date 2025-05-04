@@ -197,7 +197,6 @@ class TensorNameMap:
             "transformer.h.{bid}.attn.attention.k_proj",               # exaone
             "language_model.model.layers.{bid}.self_attn.k_proj",      # llama4
             "layers.{bid}.attention.key",                              # kateai
-            "layers.{bid}.attention.key.bias",                         # additional pattern for attention key bias
         ),
 
         # Attention value
